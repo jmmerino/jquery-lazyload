@@ -90,3 +90,97 @@
     });
 
 }(this);
+
+
+
+/**
+ * Improvement to get notification when the DOM Changes
+ */
+(function (window) {
+    var last = +new Date();
+    var onChangeTimeout = null;
+    var delay = 500; // default delay
+
+    // Manage event queue
+    var stack = [];
+
+    function callback() {
+        var now = +new Date();
+        if (now - last > delay) {
+            for (var i = 0; i < stack.length; i++) {
+                stack[i]();
+            }
+            last = now;
+        }
+    }
+
+    // Public interface
+    var onDomChange = function (fn, newdelay) {
+        if (newdelay) delay = newdelay;
+        stack.push(fn);        
+    };
+
+
+    //
+    //  Check for mutation events support
+    //
+
+    var support = {};
+
+    var el = document.documentElement;
+    var remain = 3;
+
+    function callbackTimeout( fn ){
+      if (onChangeTimeout){
+        clearTimeout(onChangeTimeout);
+      }
+      onChangeTimeout = setTimeout(function(){        
+        fn();
+      }, 250);
+
+    }
+    
+    // callback for the tests
+    function decide() {
+        if (support.DOMNodeInserted) {
+            // window.addEventListener("DOMContentLoaded", function () {
+                if (support.DOMSubtreeModified) { // for FF 3+, Chrome
+                    el.addEventListener('DOMSubtreeModified', function(){ callbackTimeout(callback) }, false);
+                } else { // for FF 2, Safari, Opera 9.6+
+                    el.addEventListener('DOMNodeInserted', function(){ callbackTimeout(callback) }, false);
+                    el.addEventListener('DOMNodeRemoved', function(){ callbackTimeout(callback) }, false);
+                }
+            // }, false);
+        } else if (document.onpropertychange) { // for IE 5.5+
+            document.onpropertychange = callback;
+        } else { // fallback
+            // naive();
+        }
+    }
+
+    // checks a particular event
+    function test(event) {
+        el.addEventListener(event, function fn() {
+            support[event] = true;
+            el.removeEventListener(event, fn, false);
+            if (--remain === 0) decide();
+        }, false);
+    }
+
+    // attach test events
+    if (window.addEventListener) {
+        test('DOMSubtreeModified');
+        test('DOMNodeInserted');
+        test('DOMNodeRemoved');
+    } else {
+        decide();
+    }
+
+    // do the dummy test
+    var dummy = document.createElement("div");
+    el.appendChild(dummy);
+    el.removeChild(dummy);
+
+    // expose
+    window.onDomChange = onDomChange;
+})(window);
